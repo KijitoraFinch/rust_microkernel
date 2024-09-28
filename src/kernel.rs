@@ -2,7 +2,9 @@
 #![no_main]
 #![feature(naked_functions)]
 
+mod sbi;
 use core::{arch::asm, panic::PanicInfo, ptr};
+use common::println;
 
 extern "C" {
     static mut __bss: u32;
@@ -17,6 +19,7 @@ extern "C" fn kernel_main() -> ! {
         let bss_end = ptr::addr_of!(__bss_end);
         ptr::write_bytes(bss_start, 0, bss_end as usize - bss_start as usize);
     }
+    println!("Hello, world!");
     loop {}
 }
 

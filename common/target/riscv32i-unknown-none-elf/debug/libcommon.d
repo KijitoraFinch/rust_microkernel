@@ -1,0 +1,1 @@
+/home/yukin/Seccamp/rust_microkernel/common/target/riscv32i-unknown-none-elf/debug/libcommon.rlib: /home/yukin/Seccamp/rust_microkernel/common/src/lib.rs /home/yukin/Seccamp/rust_microkernel/common/src/print.rs

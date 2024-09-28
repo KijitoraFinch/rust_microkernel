@@ -1,10 +1,10 @@
 [package]
-name = "os_rs"
+name = "rust_microkernel"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-
+common = { path = "./common" }
 
 [[bin]]
 name = "kernel"
