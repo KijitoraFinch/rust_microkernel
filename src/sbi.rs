@@ -37,3 +37,4 @@ pub fn putchar(c: u8) {
         sbi_call(c as i32, 0, 0, 0, 0, 0, 0, 1);
     }
 }
+
