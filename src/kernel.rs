@@ -3,9 +3,16 @@
 #![feature(naked_functions)]
 
 mod sbi;
-use core::{arch::asm, option, panic::PanicInfo, ptr::{self, read}};
 use common::println;
-
+use common::Paddr;
+use common::PAGE_SIZE;
+use core::alloc;
+use core::{
+    arch::asm,
+    option,
+    panic::PanicInfo,
+    ptr::{self, read},
+};
 
 macro_rules! readCsr {
     ($csr:expr) => {
@@ -27,34 +34,47 @@ macro_rules! writeCsr {
     };
 }
 
-
-
 extern "C" {
     static mut __bss: u32;
     static __bss_end: u32;
     static __stack_top: u32;
+    static mut __free_ram: u8;
+    static mut __free_ram_end: u8;
 }
 
+static mut NEXT_PADDR: *mut u8 = ptr::addr_of_mut!(__free_ram);
 #[no_mangle]
 extern "C" fn kernel_main() -> ! {
     unsafe {
         let bss_start = ptr::addr_of_mut!(__bss);
         let bss_end = ptr::addr_of!(__bss_end);
         ptr::write_bytes(bss_start, 0, bss_end as usize - bss_start as usize);
+        let mut free_ram_start = ptr::addr_of_mut!(__free_ram);
+        let free_ram_end = ptr::addr_of_mut!(__free_ram_end);
+        ptr::write_bytes(
+            free_ram_start,
+            0,
+            free_ram_end as usize - free_ram_start as usize,
+        );
         writeCsr!("stvec", kernel_entry);
     }
     println!("Hello, world!");
+
     unsafe {
-        asm!("unimp");
+        let paddr = alloc_pages(1);
+        println!("Allocated page at 0x{:x}", paddr);
+        let paddr1 = alloc_pages(1);
+        println!("Allocated page at 0x{:x}", paddr1);
+        assert!(paddr + PAGE_SIZE == paddr1);
     }
-    unreachable!();
     loop {}
 }
 
 #[link_section = ".text.boot"]
 #[naked]
 #[no_mangle]
-extern "C" fn boot() { unsafe {
+extern "C" fn boot() {
+    unsafe {
         asm!("la sp, {stack_top}",
             "j kernel_main", 
             stack_top = sym __stack_top,
@@ -62,13 +82,13 @@ extern "C" fn boot() { unsafe {
     };
 }
 
-
 #[no_mangle]
 #[naked]
 extern "C" fn kernel_entry() -> ! {
     unsafe {
-        // Let all registers be saved on the stack
-        asm!("csrw sscratch, sp",
+        // Let all registers saved on the stack
+        asm!(
+            "csrw sscratch, sp",
             "addi sp, sp, -4 * 31",
             "sw ra, 4 * 0(sp)",
             "sw gp, 4 * 1(sp)",
@@ -100,13 +120,10 @@ extern "C" fn kernel_entry() -> ! {
             "sw s9, 4 * 27(sp)",
             "sw s10, 4 * 28(sp)",
             "sw s11, 4 * 29(sp)",
-
             "csrr a0, sscratch",
             "sw a0, 4 * 30(sp)",
-
             "mv a0, sp",
             "call handle_trap",
-
             // Restore all registers
             "lw ra, 4 * 0(sp)",
             "lw gp, 4 * 1(sp)",
@@ -139,14 +156,11 @@ extern "C" fn kernel_entry() -> ! {
             "lw s10, 4 * 28(sp)",
             "lw s11, 4 * 29(sp)",
             "lw sp, 4 * 30(sp)",
-            "sret"
-
-
-    , options(noreturn));
+            "sret",
+            options(noreturn)
+        );
     }
 }
-
-
 
 #[repr(C, packed)]
 struct TrapFrame {
@@ -183,16 +197,30 @@ struct TrapFrame {
     sp: u32,
 }
 
-
-
 #[no_mangle]
-extern "C" fn handle_trap(trapframe: &TrapFrame){
+extern "C" fn handle_trap(trapframe: &TrapFrame) {
     let scause = readCsr!("scause");
     let stval = readCsr!("stval");
     let user_pc = readCsr!("sepc");
-    panic!("unexpected trap! scause={:x}, stval={:x}, user_pc={:x}", scause, stval, user_pc);
+    panic!(
+        "unexpected trap! scause={:x}, stval={:x}, user_pc={:x}",
+        scause, stval, user_pc
+    );
 }
 
+fn alloc_pages(pages: u32) -> Paddr {
+    unsafe {
+        let page_addr = NEXT_PADDR as Paddr;
+        NEXT_PADDR = NEXT_PADDR.add((pages as usize * PAGE_SIZE));
+
+        if NEXT_PADDR > ptr::addr_of_mut!(__free_ram_end) {
+            panic!("out of memory");
+        } else {
+            ptr::write_bytes(page_addr as *mut u8, 0, pages as usize * PAGE_SIZE);
+            page_addr as Paddr
+        }
+    }
+}
 
 #[panic_handler]
 fn panic(_info: &PanicInfo) -> ! {

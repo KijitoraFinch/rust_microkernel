@@ -3,6 +3,9 @@
 
 use core::fmt::Write;
 
+pub type Paddr = usize;
+pub const PAGE_SIZE: usize = 4096;
+
 extern "C" {
     fn putchar(c: u8);
 }
@@ -52,11 +55,10 @@ pub fn strlen(s: &str) -> usize {
     len
 }
 
-
 pub fn strcpy(dst: &mut [u8], src: &str) {
     if dst.len() < src.len() {
         panic!("common/strcpy: destination buffer is too small");
-    }    
+    }
     for (i, c) in src.bytes().enumerate() {
         dst[i] = c;
     }
